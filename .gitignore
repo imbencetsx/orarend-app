@@ -1,0 +1,26 @@
+# SwiftPM build output
+.build/
+.swiftpm/
+
+# Xcode
+*.xcodeproj/
+*.xcworkspace/
+xcuserdata/
+DerivedData/
+*.moved-aside
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+
+# Built app bundle (rebuild with ./build-app.sh)
+OrarendApp.app/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Swift Package Manager resolved file (keep for apps, uncomment to track)
+# Package.resolved
