@@ -69,13 +69,22 @@ public func secondsSinceMidnight(_ date: Date, calendar: Calendar = .current) ->
 }
 
 /// A menübar-logika szíve. Minden kiszámítható belőle, ezért unit-tesztelhető.
-public func status(at date: Date, calendar: Calendar = .current) -> SchoolStatus {
+/// Alapból a beépített órarendet használja; a `bellSchedule`/`timetable`
+/// paraméterekkel JSON-ből töltött órarend is beadható (lásd TimetableStore).
+public func status(
+    at date: Date,
+    calendar: Calendar = .current,
+    bellSchedule bellsOverride: [BellPeriod]? = nil,
+    timetable tableOverride: [Int: [Int: String]]? = nil
+) -> SchoolStatus {
+    let bells = bellsOverride ?? bellSchedule
+    let table = tableOverride ?? timetable
     let weekday = calendar.component(.weekday, from: date) // 1=vas, 7=szo
     if weekday == 1 || weekday == 7 { return .weekend }
-    guard let dayTable = timetable[weekday], !dayTable.isEmpty else { return .noSchoolToday }
+    guard let dayTable = table[weekday], !dayTable.isEmpty else { return .noSchoolToday }
 
     let nowSec = secondsSinceMidnight(date, calendar: calendar)
-    let periods = bellSchedule.sorted { $0.number < $1.number }
+    let periods = bells.sorted { $0.number < $1.number }
 
     let taughtPeriods = periods.filter { dayTable[$0.number] != nil }
     guard let first = taughtPeriods.first, let last = taughtPeriods.last else {

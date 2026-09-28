@@ -15,7 +15,7 @@ struct OrarendAppMain: App {
         // Natív Settings scene (⌘, ha az app aktív).
         // A menüből a gomb direktben nyitja (lásd AppDelegate.showSettings).
         Settings {
-            SettingsView(clock: delegate.clock)
+            SettingsView(clock: delegate.clock, store: delegate.clock.timetableStore)
         }
     }
 }
@@ -44,7 +44,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         pop.behavior = .transient
         pop.animates = true
         pop.contentSize = NSSize(width: 320, height: 520)
-        pop.contentViewController = NSHostingController(rootView: MenuView(clock: clock))
+        pop.contentViewController = NSHostingController(rootView: MenuView(clock: clock, store: clock.timetableStore))
         self.popover = pop
 
         // Félkövér cím követése
@@ -99,7 +99,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         popover.performClose(nil)
         if settingsWindow == nil {
             let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 440, height: 400),
+                contentRect: NSRect(x: 0, y: 0, width: 440, height: 480),
                 styleMask: [.titled, .closable],
                 backing: .buffered, defer: false
             )
@@ -109,7 +109,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.settingsWindow = window
         }
         // Mindig friss tartalom ugyanazzal a Clock példánnyal
-        settingsWindow?.contentViewController = NSHostingController(rootView: SettingsView(clock: clock))
+        settingsWindow?.contentViewController = NSHostingController(rootView: SettingsView(clock: clock, store: clock.timetableStore))
         settingsWindow?.makeKeyAndOrderFront(nil)
         settingsWindow?.orderFrontRegardless()
         NSApp.activate(ignoringOtherApps: true)
@@ -138,11 +138,19 @@ final class Clock: ObservableObject {
     @Published var testWeekday: Int = 2       // 2=Hé … 6=Pé
     @Published var testMinutes: Int = 8 * 60  // éjfél óta perc
     @Published var loginAtStart = SMAppService.mainApp.status == .enabled
+    /// JSON-ből töltött órarend + csengetési rend (~/Library/Application Support/… felülírhatja).
+    let timetableStore = TimetableStore()
 
     private var timer: Timer?
     private let cal = Calendar.current
+    private var cancellables = Set<AnyCancellable>()
 
     init() {
+        // Órarend-változásra azonnal újraszámolunk.
+        timetableStore.objectWillChange
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.tick() }
+            .store(in: &cancellables)
         // Alap: ha hétvége van, a teszt-nap legyen hétfő, hogy egyből lehessen próbálgatni
         let wd = cal.component(.weekday, from: Date())
         if wd == 1 || wd == 7 { testWeekday = 2; testMinutes = 8 * 60 + 20 }
@@ -165,11 +173,16 @@ final class Clock: ObservableObject {
         return cal.date(from: comps) ?? Date()
     }
 
-    var currentStatus: SchoolStatus { status(at: effectiveDate, calendar: cal) }
+    var currentStatus: SchoolStatus {
+        status(at: effectiveDate, calendar: cal,
+               bellSchedule: timetableStore.bells, timetable: timetableStore.table)
+    }
 
     func tick() {
         now = effectiveDate
-        menuTitle = menuBarTitle(for: status(at: now, calendar: cal))
+        menuTitle = menuBarTitle(for: status(at: now, calendar: cal,
+                                             bellSchedule: timetableStore.bells,
+                                             timetable: timetableStore.table))
     }
 
     func toggleLogin() {
@@ -192,6 +205,7 @@ final class Clock: ObservableObject {
 
 struct MenuView: View {
     @ObservedObject var clock: Clock
+    @ObservedObject var store: TimetableStore
     @State private var cal = Calendar.current
 
     var body: some View {
@@ -269,7 +283,7 @@ struct MenuView: View {
     @ViewBuilder
     private var todayList: some View {
         let wd = cal.component(.weekday, from: clock.now)
-        let dayTable = timetable[wd] ?? [:]
+        let dayTable = store.table[wd] ?? [:]
         let st = clock.currentStatus
         let activePeriod: Int? = {
             if case .lesson(let p, _, _, _, _) = st { return p }
@@ -282,7 +296,7 @@ struct MenuView: View {
                 .fontWeight(.semibold)
                 .foregroundStyle(.secondary)
             VStack(spacing: 2) {
-                ForEach(bellSchedule, id: \.number) { p in
+                ForEach(store.bells, id: \.number) { p in
                     if let subj = dayTable[p.number] {
                         let isActive = activePeriod == p.number
                         HStack(spacing: 8) {
@@ -403,6 +417,7 @@ struct TestTimeControls: View {
 
 struct SettingsView: View {
     @ObservedObject var clock: Clock
+    @ObservedObject var store: TimetableStore
 
     var body: some View {
         Form {
@@ -411,6 +426,41 @@ struct SettingsView: View {
                     get: { clock.loginAtStart },
                     set: { _ in clock.toggleLogin() }
                 ))
+            }
+
+            Section("Órarend (JSON)") {
+                if let url = store.sourceURL {
+                    Text(url.path)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                } else {
+                    Text("Beépített órarend")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                if let err = store.errorMessage {
+                    Text(err)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+                HStack {
+                    Button("Újratöltés") {
+                        store.load()
+                        clock.tick()
+                    }
+                    Button("Megnyitás Finderben") {
+                        let url = FileManager.default.fileExists(atPath: TimetableStore.userFileURL.path)
+                            ? TimetableStore.userFileURL
+                            : store.sourceURL
+                        if let url {
+                            NSWorkspace.shared.activateFileViewerSelecting([url])
+                        }
+                    }
+                }
+                Text("Szerkeszd a JSON fájlt, majd nyomj Újratöltést.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Fejlesztő") {
@@ -429,7 +479,7 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 380, height: 320)
+        .frame(width: 380, height: 420)
         .padding(8)
     }
 }

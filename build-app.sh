@@ -8,9 +8,10 @@ swift build -c release
 
 APP="OrarendApp.app"
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp ".build/release/OrarendApp" "$APP/Contents/MacOS/OrarendApp"
 cp "Resources/Info.plist" "$APP/Contents/Info.plist"
+cp "Resources/timetable.json" "$APP/Contents/Resources/timetable.json"
 chmod +x "$APP/Contents/MacOS/OrarendApp"
 
 echo "✅ Kész: ./$APP"

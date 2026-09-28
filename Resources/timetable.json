@@ -1,0 +1,58 @@
+{
+  "bellSchedule": [
+    { "number": 1, "start": "8:15", "end": "9:00" },
+    { "number": 2, "start": "9:10", "end": "9:55" },
+    { "number": 3, "start": "10:10", "end": "10:55" },
+    { "number": 4, "start": "11:05", "end": "11:50" },
+    { "number": 5, "start": "12:00", "end": "12:45" },
+    { "number": 6, "start": "13:10", "end": "13:55" },
+    { "number": 7, "start": "14:05", "end": "14:45" },
+    { "number": 8, "start": "15:00", "end": "15:45" }
+  ],
+  "timetable": {
+    "monday": {
+      "1": "IR",
+      "2": "TEST",
+      "3": "MUNKISM",
+      "4": "KTERMTUD",
+      "5": "MAT",
+      "6": "ANG",
+      "7": "PROGAL"
+    },
+    "tuesday": {
+      "1": "MNY",
+      "2": "TEST",
+      "3": "SPA/NÉM",
+      "4": "TÖRT",
+      "5": "MAT/DIGKULT",
+      "6": "DIGKULT/MAT"
+    },
+    "wednesday": {
+      "1": "TÖRT",
+      "2": "IR",
+      "3": "MAT",
+      "4": "ANG",
+      "5": "OFŐ",
+      "6": "GAZDJOGIS/INFTÁV",
+      "7": "KOM/IKT"
+    },
+    "thursday": {
+      "1": "IR",
+      "2": "GAZDJOGIS/INFTÁV",
+      "3": "ANG",
+      "4": "SPA/NÉM",
+      "5": "GÉPÍ/PROGAL",
+      "6": "TÖRT",
+      "7": "KOM/GÉPÍ"
+    },
+    "friday": {
+      "1": "TEST",
+      "2": "ANG",
+      "3": "SPA/NÉM",
+      "4": "KTERMTUD",
+      "5": "KTERMTUD",
+      "6": "GAZDJOGIS/INFTÁV",
+      "7": "GÉPÍ"
+    }
+  }
+}

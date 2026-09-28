@@ -14,4 +14,10 @@ Click the menu bar item for a big countdown, today's classes, and settings (laun
 
 ## Configure
 
-Edit the bell schedule + timetable in `Sources/OrarendApp/Schedule.swift`.
+Edit `Resources/timetable.json` (bell schedule + timetable), or — once the app
+has run — `~/Library/Application Support/OrarendApp/timetable.json` (the app
+seeds it from the bundled file on first launch). Then press Újratöltés
+(Reload) in Settings → Órarend, or restart the app.
+
+Day keys accept `monday`…`friday` (also hungarian names or weekday numbers
+`"2"`…`"6"`); times are `"H:MM"`; a `null` subject means a free period.
