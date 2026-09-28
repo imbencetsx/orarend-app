@@ -121,6 +121,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 final class Clock: ObservableObject {
     @Published var now = Date()
     @Published var menuTitle = "…"
+    /// Saját csoportod. A menüsor CSAK ennek a tárgyát mutatja;
+    /// a csoportbontás részletezése a GUI (popover lista) dolga.
+    @Published var myGroup: StudentGroup = {
+        let saved = UserDefaults.standard.string(forKey: "myGroup") ?? "INF"
+        // "PÉ" / "PE" egyaránt jöhet
+        if saved == "LO" { return .LO }
+        if saved == "PE" || saved == "PÉ" || saved == "P" { return .PE }
+        return .INF
+    }() {
+        didSet {
+            UserDefaults.standard.set(myGroup.rawValue, forKey: "myGroup")
+            tick()
+        }
+    }
     /// Debug mód (Settingsben kapcsolható). Ha false, a teszt-idő UI rejtve marad → clean menü.
     @Published var debugMode: Bool = UserDefaults.standard.bool(forKey: "debugMode") {
         didSet {
@@ -175,14 +189,16 @@ final class Clock: ObservableObject {
 
     var currentStatus: SchoolStatus {
         status(at: effectiveDate, calendar: cal,
-               bellSchedule: timetableStore.bells, timetable: timetableStore.table)
+               bellSchedule: timetableStore.bells, timetable: timetableStore.table,
+               group: myGroup)
     }
 
     func tick() {
         now = effectiveDate
         menuTitle = menuBarTitle(for: status(at: now, calendar: cal,
                                              bellSchedule: timetableStore.bells,
-                                             timetable: timetableStore.table))
+                                             timetable: timetableStore.table,
+                                             group: myGroup))
     }
 
     func toggleLogin() {
@@ -279,7 +295,11 @@ struct MenuView: View {
         }
     }
 
-    // MARK: Mai órarend lista — aktív sor pill-szerű kiemeléssel
+    // MARK: Mai órarend lista — csoportbontással a GUI-ban.
+    // A menüsorral ellentétben itt MINDIG látszik, kinek mi van:
+    // közös óra → sima tárgynév; bontott → "INF: MAT · LO/PÉ: DIGKULT";
+    // csak egy csoportnak → "PROGAL (csak INF)".
+    // Ha neked lyukas (pl. hétfő 7. LO/PÉ-nek), halványítva + "lyukas" jelzéssel.
     @ViewBuilder
     private var todayList: some View {
         let wd = cal.component(.weekday, from: clock.now)
@@ -291,14 +311,27 @@ struct MenuView: View {
             return nil
         }()
         VStack(alignment: .leading, spacing: 6) {
-            Text(dayName(wd) + " · 9B")
-                .font(.subheadline)
-                .fontWeight(.semibold)
-                .foregroundStyle(.secondary)
+            HStack {
+                Text(dayName(wd) + " · 9B")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                // Gyors csoportváltó a GUI-ban (a menüsor címe ezt követi)
+                Picker("Csoport", selection: $clock.myGroup) {
+                    Text("INF").tag(StudentGroup.INF)
+                    Text("LO").tag(StudentGroup.LO)
+                    Text("PÉ").tag(StudentGroup.PE)
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 150)
+            }
             VStack(spacing: 2) {
                 ForEach(store.bells, id: \.number) { p in
-                    if let subj = dayTable[p.number] {
+                    if let lesson = dayTable[p.number] {
+                        let ownSubj = lesson.subject(for: clock.myGroup)
                         let isActive = activePeriod == p.number
+                        let isFreeForMe = ownSubj == nil
                         HStack(spacing: 8) {
                             Text("\(p.number).")
                                 .fontWeight(.semibold)
@@ -306,9 +339,21 @@ struct MenuView: View {
                             Text("\(p.startLabel)–\(p.endLabel)")
                                 .monospacedDigit()
                                 .frame(width: 92, alignment: .leading)
-                            Text(subj)
-                                .fontWeight(isActive ? .semibold : .regular)
-                                .lineLimit(1)
+                            VStack(alignment: .leading, spacing: 1) {
+                                if let common = lesson.commonSubject {
+                                    Text(common)
+                                        .fontWeight(isActive ? .semibold : .regular)
+                                        .lineLimit(1)
+                                } else {
+                                    Text(ownSubj ?? "lyukas")
+                                        .fontWeight(isActive ? .semibold : .regular)
+                                        .lineLimit(1)
+                                    Text(otherGroupsText(lesson, own: clock.myGroup))
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
+                            }
                             Spacer()
                             if isActive {
                                 Circle()
@@ -317,7 +362,7 @@ struct MenuView: View {
                             }
                         }
                         .font(.callout)
-                        .foregroundStyle(isActive ? .primary : .secondary)
+                        .foregroundStyle(isFreeForMe ? .tertiary : (isActive ? .primary : .secondary))
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .background(
@@ -331,6 +376,27 @@ struct MenuView: View {
                 Text("Ma nincs tanítás.").font(.callout).foregroundStyle(.secondary)
             }
         }
+    }
+
+    /// A GUI alsor-szövege a MÁSIK csoport(ok) órájáról, pl. "LO/PÉ: DIGKULT".
+    private func otherGroupsText(_ lesson: GroupLesson, own: StudentGroup) -> String {
+        let lo = lesson.subject(for: .LO)
+        let pe = lesson.subject(for: .PE)
+        let inf = lesson.subject(for: .INF)
+        if lo != nil, lo == pe {
+            // LO/PÉ összevonva
+            switch own {
+            case .INF:
+                return lo.map { "LO/PÉ: \($0)" } ?? "LO/PÉ: lyukas"
+            case .LO, .PE:
+                return inf.map { "INF: \($0)" } ?? "INF: lyukas"
+            }
+        }
+        // Ritka eset: LO ≠ PÉ — mindet kiírjuk
+        return StudentGroup.allCases
+            .filter { $0 != own }
+            .map { g in lesson.subject(for: g).map { "\(g.displayName): \($0)" } ?? "\(g.displayName): lyukas" }
+            .joined(separator: " · ")
     }
 
     // MARK: Teszt-idő (csak debug módban)
@@ -421,6 +487,18 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
+            Section("Csoport") {
+                Picker("Saját csoportom", selection: $clock.myGroup) {
+                    Text("INF").tag(StudentGroup.INF)
+                    Text("LO").tag(StudentGroup.LO)
+                    Text("PÉ").tag(StudentGroup.PE)
+                }
+                .pickerStyle(.segmented)
+                Text("A menüsor csak a saját csoportod óráját mutatja (pl. hétfő 7. PROGAL csak INF-nek). A csoportbontás részletezése a menü listájában látszik. LO és PÉ mindig együtt van.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("Általános") {
                 Toggle("Indítás bejelentkezéskor", isOn: Binding(
                     get: { clock.loginAtStart },

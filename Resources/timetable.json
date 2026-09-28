@@ -17,15 +17,15 @@
       "4": "KTERMTUD",
       "5": "MAT",
       "6": "ANG",
-      "7": "PROGAL"
+      "7": { "INF": "PROGAL" }
     },
     "tuesday": {
       "1": "MNY",
       "2": "TEST",
       "3": "SPA/NÉM",
       "4": "TÖRT",
-      "5": "MAT/DIGKULT",
-      "6": "DIGKULT/MAT"
+      "5": { "INF": "MAT", "LOPÉ": "DIGKULT" },
+      "6": { "INF": "DIGKULT", "LOPÉ": "MAT" }
     },
     "wednesday": {
       "1": "TÖRT",
@@ -33,17 +33,17 @@
       "3": "MAT",
       "4": "ANG",
       "5": "OFŐ",
-      "6": "GAZDJOGIS/INFTÁV",
-      "7": "KOM/IKT"
+      "6": { "INF": "INFTÁV", "LOPÉ": "GAZDJOGIS" },
+      "7": { "INF": "IKT", "LOPÉ": "KOM" }
     },
     "thursday": {
       "1": "IR",
-      "2": "GAZDJOGIS/INFTÁV",
+      "2": { "INF": "INFTÁV", "LOPÉ": "GAZDJOGIS" },
       "3": "ANG",
       "4": "SPA/NÉM",
-      "5": "GÉPÍ/PROGAL",
+      "5": { "INF": "PROGAL", "LOPÉ": "GÉPÍ" },
       "6": "TÖRT",
-      "7": "KOM/GÉPÍ"
+      "7": { "INF": "GÉPÍ", "LOPÉ": "KOM" }
     },
     "friday": {
       "1": "TEST",
@@ -51,8 +51,8 @@
       "3": "SPA/NÉM",
       "4": "KTERMTUD",
       "5": "KTERMTUD",
-      "6": "GAZDJOGIS/INFTÁV",
-      "7": "GÉPÍ"
+      "6": { "INF": "INFTÁV", "LOPÉ": "GAZDJOGIS" },
+      "7": { "LOPÉ": "GÉPÍ" }
     }
   }
 }

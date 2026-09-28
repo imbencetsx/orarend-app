@@ -21,8 +21,8 @@ final class TimetableJSONTests: XCTestCase {
 
         XCTAssertEqual(bells.count, 8)
         XCTAssertEqual(bells.first?.startMinutes, 8 * 60 + 15)
-        XCTAssertEqual(table[2]?[1], "IR")   // hétfő 1. óra
-        XCTAssertEqual(table[6]?[4], "KTERMTUD") // péntek dupla
+        XCTAssertEqual(table[2]?[1]?.commonSubject, "IR")   // hétfő 1. óra közös
+        XCTAssertEqual(table[6]?[4]?.commonSubject, "KTERMTUD") // péntek dupla közös
     }
 
     func testJSONMatchesBuiltinStatus() throws {
@@ -51,5 +51,34 @@ final class TimetableJSONTests: XCTestCase {
         XCTAssertEqual(TimetableFile.weekday(for: "2"), 2)
         XCTAssertEqual(TimetableFile.weekday(for: "friday"), 6)
         XCTAssertNil(TimetableFile.weekday(for: "nonsense"))
+    }
+
+    func testSplitDecoding() throws {
+        let data = try Data(contentsOf: try jsonURL())
+        let file = try JSONDecoder().decode(TimetableFile.self, from: data)
+        let (_, table) = try file.decoded()
+
+        // Hétfő 7. PROGAL csak INF-nek
+        XCTAssertEqual(table[2]?[7]?.subject(for: .INF), "PROGAL")
+        XCTAssertNil(table[2]?[7]?.subject(for: .LO))
+        XCTAssertNil(table[2]?[7]?.subject(for: .PE))
+        // Kedd 5. INF: MAT, LO/PÉ: DIGKULT; 6. fordítva
+        XCTAssertEqual(table[3]?[5]?.subject(for: .INF), "MAT")
+        XCTAssertEqual(table[3]?[5]?.subject(for: .LO), "DIGKULT")
+        XCTAssertEqual(table[3]?[5]?.subject(for: .PE), "DIGKULT")
+        XCTAssertEqual(table[3]?[6]?.subject(for: .INF), "DIGKULT")
+        XCTAssertEqual(table[3]?[6]?.subject(for: .LO), "MAT")
+        // Szerda 6. INF: INFTÁV, LO/PÉ: GAZDJOGIS
+        XCTAssertEqual(table[4]?[6]?.subject(for: .INF), "INFTÁV")
+        XCTAssertEqual(table[4]?[6]?.subject(for: .LO), "GAZDJOGIS")
+        // Csütörtök 7. INF: GÉPÍ, LO/PÉ: KOM
+        XCTAssertEqual(table[5]?[7]?.subject(for: .INF), "GÉPÍ")
+        XCTAssertEqual(table[5]?[7]?.subject(for: .LO), "KOM")
+        // Péntek 7. csak LO/PÉ-nek GÉPÍ
+        XCTAssertNil(table[6]?[7]?.subject(for: .INF))
+        XCTAssertEqual(table[6]?[7]?.subject(for: .LO), "GÉPÍ")
+        XCTAssertEqual(table[6]?[7]?.subject(for: .PE), "GÉPÍ")
+        // Közös óra mindenkinek ugyanaz
+        XCTAssertEqual(table[2]?[1]?.commonSubject, "IR")
     }
 }

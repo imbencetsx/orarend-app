@@ -7,13 +7,25 @@ import Combine
 /// ```json
 /// {
 ///   "bellSchedule": [{ "number": 1, "start": "8:15", "end": "9:00" }],
-///   "timetable": { "monday": { "1": "IR", "2": "TEST" } }
+///   "timetable": {
+///     "monday": {
+///       "1": "IR",
+///       "7": { "INF": "PROGAL" },
+///       "5": { "INF": "MAT", "LO": "DIGKULT", "PÉ": "DIGKULT" }
+///     }
+///   }
 /// }
 /// ```
 /// - Times are `"H:MM"` (24h).
 /// - Day keys accept english names (`monday`…`friday`, also `saturday`/`sunday`),
 ///   hungarian names (`hétfő`, `kedd`, …) or Calendar weekday numbers (`"2"`…`"6"`).
-/// - A `null` subject (or a missing period) means a free period.
+/// - A lesson value can be:
+///   - a string → common lesson for everyone (`"IR"`, `"SPA/NÉM"`)
+///   - an object → split by group (`{"INF": "MAT", "LO": "DIGKULT", "PÉ": "DIGKULT"}`)
+///     Missing group = free period for them. `"LOPÉ"` / `"LOPE"` / `"LO/PÉ"`
+///     is a shorthand for both LO + PÉ. `"INF"`-only (e.g. monday 7th PROGAL)
+///     means LO/PÉ have a free period there.
+///   - `null` (or a missing period) means a free period for everyone.
 ///
 /// Lookup order:
 /// 1. `~/Library/Application Support/OrarendApp/timetable.json` (user-editable override)
@@ -36,12 +48,72 @@ public struct TimetableFile: Codable {
     }
 
     public var bellSchedule: [BellEntry]
-    /// Day key → period key → subject (`nil` = free period).
-    public var timetable: [String: [String: String?]]
+    /// Day key → period key → lesson (string = common, object = per-group, null = free).
+    public var timetable: [String: [String: LessonValue]]
 
-    public init(bellSchedule: [BellEntry], timetable: [String: [String: String?]]) {
+    public init(bellSchedule: [BellEntry], timetable: [String: [String: LessonValue]]) {
         self.bellSchedule = bellSchedule
         self.timetable = timetable
+    }
+
+    /// A single lesson in JSON: `"IR"` (common), `{"INF": "MAT", ...}` (split) or `nil` (free).
+    public enum LessonValue: Codable, Equatable {
+        case common(String)
+        case split([String: String])
+
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.singleValueContainer()
+            if c.decodeNil() {
+                // null → üres split = mindenkinek lyukas (a decoded() kihagyja)
+                self = .split([:])
+                return
+            }
+            if let s = try? c.decode(String.self) {
+                self = .common(s)
+                return
+            }
+            let dict = try c.decode([String: String?].self)
+            var cleaned: [String: String] = [:]
+            for (k, v) in dict {
+                guard let v, !v.trimmingCharacters(in: .whitespaces).isEmpty else { continue }
+                cleaned[k] = v
+            }
+            self = .split(cleaned)
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var c = encoder.singleValueContainer()
+            switch self {
+            case .common(let s): try c.encode(s)
+            case .split(let d): try c.encode(d)
+            }
+        }
+
+        /// Normalizált csoportbontás. Ismeretlen kulcsot ignoráljuk.
+        /// Visszafelé kompatibilitás: a régi `"MAT/DIGKULT"` formát nem
+        /// fejtjük meg (sorrendje naponként eltért) — az új JSON objektumot használ.
+        func toGroupLesson() -> GroupLesson? {
+            switch self {
+            case .common(let s):
+                let t = s.trimmingCharacters(in: .whitespaces)
+                guard !t.isEmpty else { return nil }
+                // Régi "A/B" formátum érkezésekor nem tippelünk csoportot:
+                // közösnek mutatjuk (GUI-ban látszik), a csoportos logika
+                // az új objektum formátumot használja.
+                return GroupLesson(common: t)
+            case .split(let dict):
+                if dict.isEmpty { return nil }
+                var subjects: [StudentGroup: String] = [:]
+                for (k, v) in dict {
+                    let t = v.trimmingCharacters(in: .whitespaces)
+                    guard !t.isEmpty else { continue }
+                    guard let gs = StudentGroup.groups(forKey: k) else { continue }
+                    for g in gs { subjects[g] = t }
+                }
+                guard !subjects.isEmpty else { return nil }
+                return GroupLesson(subjects)
+            }
+        }
     }
 
     // MARK: - Parsing
@@ -90,7 +162,7 @@ public struct TimetableFile: Codable {
         }
     }
 
-    public func decoded() throws -> (bells: [BellPeriod], table: [Int: [Int: String]]) {
+    public func decoded() throws -> (bells: [BellPeriod], table: [Int: [Int: GroupLesson]]) {
         var bells: [BellPeriod] = []
         for e in bellSchedule {
             let s = try Self.parseTime(e.start)
@@ -99,13 +171,13 @@ public struct TimetableFile: Codable {
         }
         guard !bells.isEmpty else { throw LoadError.emptyBellSchedule }
 
-        var table: [Int: [Int: String]] = [:]
+        var table: [Int: [Int: GroupLesson]] = [:]
         for (dayKey, periods) in timetable {
             guard let wd = Self.weekday(for: dayKey) else { continue }
-            var day: [Int: String] = [:]
-            for (periodKey, subject) in periods {
-                guard let p = Int(periodKey), let s = subject, !s.isEmpty else { continue }
-                day[p] = s
+            var day: [Int: GroupLesson] = [:]
+            for (periodKey, value) in periods {
+                guard let p = Int(periodKey), let lesson = value.toGroupLesson() else { continue }
+                day[p] = lesson
             }
             if !day.isEmpty { table[wd] = day }
         }
@@ -125,7 +197,7 @@ extension BellPeriod {
 /// Loads the timetable from JSON, publishes it for SwiftUI, falls back to built-ins.
 public final class TimetableStore: ObservableObject {
     @Published public private(set) var bells: [BellPeriod] = bellSchedule
-    @Published public private(set) var table: [Int: [Int: String]] = timetable
+    @Published public private(set) var table: [Int: [Int: GroupLesson]] = timetable
     @Published public private(set) var sourceURL: URL?
     @Published public private(set) var errorMessage: String?
 

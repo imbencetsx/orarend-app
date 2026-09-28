@@ -78,4 +78,41 @@ final class ScheduleTests: XCTestCase {
         let st = status(at: date(weekday: 2, h: 8, m: 59, s: 30), calendar: cal)
         XCTAssertEqual(menuBarTitle(for: st), "IR · 30mp")
     }
+
+    func testMonday7OnlyINF() {
+        // Hétfő 14:10 (7. óra): INF-nek PROGAL, LO/PÉ-nek már vége (6. óra ANG volt az utolsó)
+        let inf = status(at: date(weekday: 2, h: 14, m: 10), calendar: cal, group: .INF)
+        if case .lesson(let p, let s, _, _, _) = inf {
+            XCTAssertEqual(p, 7); XCTAssertEqual(s, "PROGAL")
+        } else { XCTFail("INF-nek PROGAL-t vártam: \(inf)") }
+        XCTAssertEqual(status(at: date(weekday: 2, h: 14, m: 10), calendar: cal, group: .LO), .afterSchool)
+        XCTAssertEqual(status(at: date(weekday: 2, h: 14, m: 10), calendar: cal, group: .PE), .afterSchool)
+        XCTAssertEqual(menuBarTitle(for: inf), "PROGAL · 35p")
+    }
+
+    func testTuesdaySplit() {
+        // Kedd 5. óra (12:00–12:45): INF: MAT, LO/PÉ: DIGKULT
+        let inf = status(at: date(weekday: 3, h: 12, m: 10), calendar: cal, group: .INF)
+        let lo = status(at: date(weekday: 3, h: 12, m: 10), calendar: cal, group: .LO)
+        if case .lesson(_, let s, _, _, _) = inf { XCTAssertEqual(s, "MAT") }
+        else { XCTFail("INF-nek MAT-ot vártam: \(inf)") }
+        if case .lesson(_, let s, _, _, _) = lo { XCTAssertEqual(s, "DIGKULT") }
+        else { XCTFail("LO-nak DIGKULT-ot vártam: \(lo)") }
+        // Kedd 6. óra: fordítva
+        let inf6 = status(at: date(weekday: 3, h: 13, m: 20), calendar: cal, group: .INF)
+        let lo6 = status(at: date(weekday: 3, h: 13, m: 20), calendar: cal, group: .LO)
+        if case .lesson(_, let s, _, _, _) = inf6 { XCTAssertEqual(s, "DIGKULT") }
+        else { XCTFail("INF-nek DIGKULT-ot vártam: \(inf6)") }
+        if case .lesson(_, let s, _, _, _) = lo6 { XCTAssertEqual(s, "MAT") }
+        else { XCTFail("LO-nak MAT-ot vártam: \(lo6)") }
+    }
+
+    func testFriday7OnlyLOPE() {
+        // Péntek 7. óra (14:05–14:45): csak LO/PÉ-nek GÉPÍ, INF-nek vége 6. óra után
+        let lo = status(at: date(weekday: 6, h: 14, m: 10), calendar: cal, group: .LO)
+        if case .lesson(let p, let s, _, _, _) = lo {
+            XCTAssertEqual(p, 7); XCTAssertEqual(s, "GÉPÍ")
+        } else { XCTFail("LO-nak GÉPÍ-t vártam: \(lo)") }
+        XCTAssertEqual(status(at: date(weekday: 6, h: 14, m: 10), calendar: cal, group: .INF), .afterSchool)
+    }
 }
